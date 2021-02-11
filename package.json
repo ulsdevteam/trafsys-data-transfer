@@ -1,0 +1,19 @@
+{
+  "name": "trafsys-data-transfer",
+  "version": "1.0.0",
+  "description": "Loads hourly TrafSys data into an oracle database.",
+  "main": "script.js",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "dotenv": "^8.2.0",
+    "node-datetime": "^2.1.2",
+    "oracledb": "^5.1.0",
+    "qs": "^6.9.6"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Chrysanthemum Lovelace <chrysanthemum@pitt.edu>",
+  "license": "MIT"
+}
