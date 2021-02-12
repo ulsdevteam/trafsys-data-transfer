@@ -3,6 +3,13 @@ const oracledb = require('oracledb');
 const axios = require('axios');
 const qs = require('qs');
 const datetime = require('node-datetime');
+const { program } = require('commander');
+
+const yesterday = yesterdayDateString();
+program
+  .option('-f, --from <date>', 'From Date (YYYY-MM-DD)', yesterday)
+  .option('-t, --to <date>', 'To Date (YYYY-MM-DD)', yesterday);
+program.parse();
 
 /**
  * Checks if all the required environment variables are present.
@@ -76,15 +83,16 @@ async function getTrafsysData() {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
   });
-  let access_token = tokenResponse.data.access_token; 
-  let yesterday = yesterdayDateString();
+  let access_token = tokenResponse.data.access_token;
+  let options = program.opts(); 
+  //let yesterday = yesterdayDateString();
   let dataResponse = await axios.get(trafsysUrl + 'api/traffic', {
     params: {
       SiteCode: '',
       IncludeInternalLocations: true,
       DataSummedByDay: false,
-      DateFrom: yesterday,
-      DateTo: yesterday
+      DateFrom: options.from,
+      DateTo: options.to
     },
     headers: {
       'Authorization': 'Bearer ' + access_token
@@ -127,16 +135,22 @@ function setPrimaryKey(record) {
  */
 async function insertData(connection, data) {
   let result = await connection.executeMany(
-    `insert into ULS_TRAFSYS_DATA values
-     (
-       :RecordId,
-       :SiteCode,
-       :Location,
-       :IsInternal,
-       TO_DATE(:PeriodEnding, 'YYYY-MM-DD"T"HH24:MI:SS'),
-       :Ins,
-       :Outs
-     )`,
+    `begin
+       insert into ULS_TRAFSYS_DATA values
+       (
+	 :RecordId,
+	 :SiteCode,
+	 :Location,
+	 :IsInternal,
+	 TO_DATE(:PeriodEnding, 'YYYY-MM-DD"T"HH24:MI:SS'),
+	 :Ins,
+	 :Outs
+       );
+     exception when dup_val_on_index then
+       update ULS_TRAFSYS_DATA
+       set Ins = :Ins, Outs = :Outs
+       where RecordId = :RecordId;
+     end;`,
     data,
     {
       autoCommit: true,

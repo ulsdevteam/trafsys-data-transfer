@@ -5,6 +5,7 @@
   "main": "script.js",
   "dependencies": {
     "axios": "^0.21.1",
+    "commander": "^7.0.0",
     "dotenv": "^8.2.0",
     "node-datetime": "^2.1.2",
     "oracledb": "^5.1.0",
