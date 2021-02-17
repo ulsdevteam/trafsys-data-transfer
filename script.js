@@ -85,7 +85,6 @@ async function getTrafsysData() {
   });
   let access_token = tokenResponse.data.access_token;
   let options = program.opts(); 
-  //let yesterday = yesterdayDateString();
   let dataResponse = await axios.get(trafsysUrl + 'api/traffic', {
     params: {
       SiteCode: '',
@@ -138,13 +137,13 @@ async function insertData(connection, data) {
     `begin
        insert into ULS_TRAFSYS_DATA values
        (
-	 :RecordId,
-	 :SiteCode,
-	 :Location,
-	 :IsInternal,
-	 TO_DATE(:PeriodEnding, 'YYYY-MM-DD"T"HH24:MI:SS'),
-	 :Ins,
-	 :Outs
+         :RecordId,
+         :SiteCode,
+         :Location,
+         :IsInternal,
+         TO_DATE(:PeriodEnding, 'YYYY-MM-DD"T"HH24:MI:SS'),
+         :Ins,
+         :Outs
        );
      exception when dup_val_on_index then
        update ULS_TRAFSYS_DATA
