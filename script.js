@@ -133,6 +133,7 @@ function setPrimaryKey(record) {
  * @param {DataRecord[]} data 
  */
 async function insertData(connection, data) {
+  if (data.length === 0) return;
   let result = await connection.executeMany(
     `begin
        insert into ULS_TRAFSYS_DATA values
@@ -183,7 +184,7 @@ async function run() {
     await insertData(connection, trafsysData);  
   }
   catch (e) {
-    console.error(e);
+    console.error(e.toString());
   }
   finally {
     if (connection) {
