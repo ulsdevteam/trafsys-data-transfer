@@ -43,14 +43,13 @@ async function ensureTableExists(connection) {
     await connection.execute(
       `create table ULS_TRAFSYS_DATA
        (
-         RecordId varchar2(100),
          SiteCode varchar2(100),
          Location varchar2(100),
          IsInternal number(1),
          PeriodEnding date,
          Ins number,
          Outs number,
-         primary key(RecordId)
+         primary key(SiteCode, Location, PeriodEnding)
        )`
     );
   }
@@ -59,7 +58,6 @@ async function ensureTableExists(connection) {
 /**
  * A TrafSys data record.
  * @typedef {Object} DataRecord
- * @property {string} RecordId - Uniquely identifying ID composed from SiteCode, Location, and PeriodEnding.
  * @property {string} SiteCode - The alphanumeric code that identifies the site within the organization.
  * @property {string} Location - The name of the location where the sensors are counting.
  * @property {number} IsInternal - Indicates (using 0 or 1) whether this is an internal location.
@@ -99,7 +97,6 @@ async function getTrafsysData() {
   });
   let data = dataResponse.data;
   for (let record of data) {
-    setPrimaryKey(record);
     // Oracle has no boolean datatype for columns, so cast it to a number
     record.IsInternal = +record.IsInternal;
   }
@@ -116,18 +113,6 @@ function yesterdayDateString() {
 }
 
 /**
- * Generates and sets the primary key for a record.
- * @param {Partial<DataRecord>} record
- */
-function setPrimaryKey(record) {
-  record.RecordId = (
-    record.SiteCode + 
-    record.Location +
-    record.PeriodEnding.split(':')[0]
-  ).replace(/[^a-z0-9]/gi, '');
-}
-
-/**
  * Inserts the TrafSys data into the database.
  * @param {oracledb.Connection} connection - The database connection.
  * @param {DataRecord[]} data 
@@ -138,7 +123,6 @@ async function insertData(connection, data) {
     `begin
        insert into ULS_TRAFSYS_DATA values
        (
-         :RecordId,
          :SiteCode,
          :Location,
          :IsInternal,
@@ -149,13 +133,14 @@ async function insertData(connection, data) {
      exception when dup_val_on_index then
        update ULS_TRAFSYS_DATA
        set Ins = :Ins, Outs = :Outs
-       where RecordId = :RecordId;
+       where SiteCode = :SiteCode
+         and Location = :Location
+         and PeriodEnding = TO_DATE(:PeriodEnding, 'YYYY-MM-DD"T"HH24:MI:SS');
      end;`,
     data,
     {
       autoCommit: true,
       bindDefs: {
-        RecordId: { type: oracledb.STRING, maxSize: 100 },
         SiteCode: { type: oracledb.STRING, maxSize: 100 },
         Location: { type: oracledb.STRING, maxSize: 100 },
         IsInternal: { type: oracledb.NUMBER },
