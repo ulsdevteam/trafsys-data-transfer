@@ -6,7 +6,8 @@ const datetime = require('node-datetime');
 const { program } = require('commander');
 const Datastore = require('nedb');
 
-const logsDb = new Datastore({ filename: 'logs.db', autoload: true });
+const logsDb = new Datastore({ filename: 'logs.db', autoload: true, timestampData: true });
+logsDb.ensureIndex({ fieldName: "createdAt" });
 const yesterday = yesterdayDateString();
 const trafsysUrl = 'https://portal.trafnet.com/rest/';
 
@@ -14,11 +15,10 @@ const trafsysUrl = 'https://portal.trafnet.com/rest/';
  * A log object that collects info related to a run of this program.
  * @typedef {Object} RunInfo
  * @property {string} AccessToken - The access token used to get Trafsys data. Will be reused until it expires.
- * @property {Date} AccessTokenExpiresAt - The time at which the access point expires.
+ * @property {Date} AccessTokenExpiresAt - The time at which the access token expires.
  * @property {string} FromDate - The From date used for this run, in YYYY-MM-DD format.
  * @property {string} ToDate - The To date used for this run, in YYYY-MM-DD format.
  * @property {number?} Records - The number of records written to the Oracle db.
- * @property {Date?} FinishedAt - The time that this run finished.
  */
 
 /**
@@ -29,14 +29,15 @@ async function getRunInfo() {
   let execAsync = cursor => new Promise(
     (resolve, reject) => cursor.exec((err, result) => err ? reject(err) : resolve(result))
   );
-  let previousRun = await execAsync(logsDb.findOne({}).sort({ FinishedAt: -1 }).limit(1));
+  let previousRun = await execAsync(logsDb.findOne({}).sort({ createdAt: -1 }).limit(1));
   let currentRun = {};
   if (previousRun) {
     let expiresAt = datetime.create(previousRun.AccessTokenExpiresAt);
     let nowish = datetime.create();
     // Offset by 5 minutes to give some wiggle room (technical term)
     nowish.offsetInHours(-1/12);
-    if (expiresAt > nowish) {
+    // .now() converts the object to a timestamp for comparison
+    if (expiresAt.now() > nowish.now()) {
       currentRun.AccessToken = previousRun.AccessToken;
       currentRun.AccessTokenExpiresAt = previousRun.AccessTokenExpiresAt;
     }
@@ -142,6 +143,7 @@ async function getTrafsysData(runInfo) {
     // Oracle has no boolean datatype for columns, so cast it to a number
     record.IsInternal = +record.IsInternal;
   }
+  runInfo.Records = data.length;
   return data;
 }
 
@@ -158,7 +160,6 @@ function yesterdayDateString() {
  * Inserts the TrafSys data into the database.
  * @param {oracledb.Connection} connection - The database connection.
  * @param {DataRecord[]} data  
- * @returns {Promise<number>} - The number of records written to the db.
  */
 async function insertData(connection, data) {
   if (data.length === 0) return;
@@ -193,7 +194,6 @@ async function insertData(connection, data) {
       }
     }
   );
-  return result.rowsAffected;
 }
 
 /**
@@ -211,8 +211,7 @@ async function run() {
     await ensureTableExists(connection);
     let runInfo = await getRunInfo();
     let trafsysData = await getTrafsysData(runInfo);
-    runInfo.Records = await insertData(connection, trafsysData);
-    runInfo.FinishedAt = new Date();
+    await insertData(connection, trafsysData);
     logsDb.insert(runInfo);
   }
   catch (e) {
