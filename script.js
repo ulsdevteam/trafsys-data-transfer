@@ -36,8 +36,8 @@ async function getRunInfo() {
     let nowish = datetime.create();
     // Offset by 5 minutes to give some wiggle room (technical term)
     nowish.offsetInHours(-1/12);
-    // .now() converts the object to a timestamp for comparison
-    if (expiresAt.now() > nowish.now()) {
+    // .getTime() converts the object to a timestamp for comparison
+    if (expiresAt.getTime() > nowish.getTime()) {
       currentRun.AccessToken = previousRun.AccessToken;
       currentRun.AccessTokenExpiresAt = previousRun.AccessTokenExpiresAt;
     }
