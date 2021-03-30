@@ -5,8 +5,9 @@ const qs = require('qs');
 const datetime = require('node-datetime');
 const { program } = require('commander');
 const Datastore = require('nedb');
+const path = require('path');
 
-const logsDb = new Datastore({ filename: 'logs.db', autoload: true, timestampData: true });
+const logsDb = new Datastore({ filename: path.dirname(process.argv[1]) + '/logs.db', autoload: true, timestampData: true });
 logsDb.ensureIndex({ fieldName: "createdAt" });
 const yesterday = yesterdayDateString();
 const trafsysUrl = 'https://portal.trafnet.com/rest/';
