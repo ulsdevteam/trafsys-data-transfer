@@ -1,11 +1,11 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.dirname(process.argv[1]) + '/.env' });
 const oracledb = require('oracledb');
 const axios = require('axios');
 const qs = require('qs');
 const datetime = require('node-datetime');
 const { program } = require('commander');
 const Datastore = require('nedb');
-const path = require('path');
 
 const logsDb = new Datastore({ filename: path.dirname(process.argv[1]) + '/logs.db', autoload: true, timestampData: true });
 logsDb.ensureIndex({ fieldName: "createdAt" });
@@ -27,9 +27,11 @@ const trafsysUrl = 'https://portal.trafnet.com/rest/';
  * @returns {Promise<RunInfo>}
  */
 async function getRunInfo() {
+  // helper function to call nedb cursor methods using async/await syntax
   let execAsync = cursor => new Promise(
     (resolve, reject) => cursor.exec((err, result) => err ? reject(err) : resolve(result))
   );
+  // use sort and limit to get most recently saved log object
   let previousRun = await execAsync(logsDb.findOne({}).sort({ createdAt: -1 }).limit(1));
   let currentRun = {};
   if (previousRun) {
@@ -44,17 +46,9 @@ async function getRunInfo() {
     }
   }
   if (!currentRun.AccessToken) {
-    let tokenResponse = await axios.post(trafsysUrl + 'token', qs.stringify({
-      username: process.env.TRAFSYS_USER,
-      password: process.env.TRAFSYS_PASSWORD,
-      grant_type: 'password'
-    }), {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
-    currentRun.AccessToken = tokenResponse.data.access_token;
-    currentRun.AccessTokenExpiresAt = new Date(tokenResponse.data[".expires"]);
+    let tokenData = await getAccessToken();
+    currentRun.AccessToken = tokenData.access_token;
+    currentRun.AccessTokenExpiresAt = new Date(tokenData[".expires"]);
   }
   program
     .option('-f, --from <date>', 'From Date (YYYY-MM-DD)', previousRun?.ToDate || yesterday)
@@ -64,6 +58,24 @@ async function getRunInfo() {
   currentRun.FromDate = opts.from;
   currentRun.ToDate = opts.to;
   return currentRun;
+}
+
+/**
+ * Gets a fresh access token from TrafSys.
+ * 
+ * @returns {Promise<{access_token: string, ".expires": string}>}
+ */
+async function getAccessToken() {
+  let tokenResponse = await axios.post(trafsysUrl + 'token', qs.stringify({
+    username: process.env.TRAFSYS_USER,
+    password: process.env.TRAFSYS_PASSWORD,
+    grant_type: 'password'
+  }), {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    }
+  });
+  return tokenResponse.data;
 }
 
 /**
@@ -198,6 +210,14 @@ async function insertData(connection, data) {
 }
 
 /**
+ * Returns a promise that resolves after one second.
+ * @returns {Promise<void>}
+ */
+function waitASecond() {
+  return new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+/**
  * Run the program, pulling data from TrafSys and inserting it into the database.
  */
 async function run() {
@@ -211,7 +231,22 @@ async function run() {
     });
     await ensureTableExists(connection);
     let runInfo = await getRunInfo();
-    let trafsysData = await getTrafsysData(runInfo);
+    let trafsysData;
+    try {
+      trafsysData = await getTrafsysData(runInfo);
+    }
+    catch (e) {
+      if (e.isAxiosError && e.response.status == 401) {
+        // wait a second to prevent "429 Too Many Requests"
+        await waitASecond();
+        let tokenData = await getAccessToken();
+        runInfo.AccessToken = tokenData.access_token;
+        runInfo.AccessTokenExpiresAt = new Date(tokenData[".expires"]);
+        trafsysData = await getTrafsysData(runInfo);
+      } else {
+        throw e;
+      }      
+    }
     await insertData(connection, trafsysData);
     logsDb.insert(runInfo);
   }
