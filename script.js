@@ -152,6 +152,11 @@ async function getTrafsysData(runInfo) {
     }
   });
   let data = dataResponse.data;
+  // check that the response actually contains data
+  if (!data?.[Symbol.iterator])
+  {
+    throw new Error("Bad response from Trafsys: " + toString(dataResponse));    
+  }
   for (let record of data) {
     // Oracle has no boolean datatype for columns, so cast it to a number
     record.IsInternal = +record.IsInternal;
